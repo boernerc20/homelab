@@ -1,0 +1,188 @@
+version: '3.8'
+
+services:
+  # Ollama - Fast LLM inference engine
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # Open-WebUI - ChatGPT-like interface for Ollama with web search
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "3000:8080"
+    volumes:
+      - ./data/open-webui:/app/backend/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_SECRET_KEY=your-secret-key-change-this
+      - ENABLE_RAG_WEB_SEARCH=true
+      - RAG_WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # SearXNG - Privacy-focused meta-search engine
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/searxng:/etc/searxng
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # ComfyUI - Advanced Stable Diffusion interface
+  comfyui:
+    image: ghcr.io/ai-dock/comfyui:latest
+    container_name: comfyui
+    ports:
+      - "8188:8188"
+    volumes:
+      - ./data/comfyui/input:/opt/ComfyUI/input
+      - ./data/comfyui/output:/opt/ComfyUI/output
+      - ./data/comfyui/custom_nodes:/opt/ComfyUI/custom_nodes
+      - ./data/comfyui/user:/opt/ComfyUI/user
+      - /mnt/models/stable-diffusion:/opt/ComfyUI/models
+    environment:
+      - CLI_ARGS=--listen 0.0.0.0 --port 8188
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # Text-Generation-WebUI - Advanced LLM interface (optional alternative to Ollama)
+  text-generation-webui:
+    image: atinoda/text-generation-webui:latest-cuda
+    container_name: text-gen-webui
+    ports:
+      - "7860:7860"
+      - "5000:5000"  # API port
+    volumes:
+      - ./data/text-gen-webui/models:/app/models
+      - ./data/text-gen-webui/presets:/app/presets
+      - ./data/text-gen-webui/characters:/app/characters
+      - ./data/text-gen-webui/loras:/app/loras
+    environment:
+      - CLI_ARGS=--listen --api --api-port 5000
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # Whisper - Speech-to-text for Home Assistant voice
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    container_name: whisper
+    ports:
+      - "9000:9000"
+    environment:
+      - ASR_MODEL=base.en  # Options: tiny, base, small, medium, large
+      - ASR_ENGINE=openai_whisper
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # Piper - Fast text-to-speech for Home Assistant
+  piper:
+    image: rhasspy/wyoming-piper:latest
+    container_name: piper
+    ports:
+      - "10200:10200"
+    volumes:
+      - ./data/piper:/data
+    command: --voice en_US-lessac-medium
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # Home Assistant (if not already running elsewhere)
+  # Uncomment if you want HA in the same stack
+  # homeassistant:
+  #   image: ghcr.io/home-assistant/home-assistant:stable
+  #   container_name: homeassistant
+  #   network_mode: host
+  #   volumes:
+  #     - ./data/homeassistant:/config
+  #   environment:
+  #     - TZ=America/New_York
+  #   restart: unless-stopped
+  #   privileged: true
+
+  # Watchtower - Automatic container updates (optional)
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 0 3 * * 0  # Every Sunday at 3 AM
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # Nginx - Reverse proxy for unified access (optional)
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: nginx-proxy
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+  #     - ./config/nginx/ssl:/etc/nginx/ssl
+  #   restart: unless-stopped
+  #   networks:
+  #     - ai-network
+
+networks:
+  ai-network:
+    driver: bridge
+
+volumes:
+  # Named volumes for easier management
+  ollama-data:
+  comfyui-data:
+  open-webui-data:
