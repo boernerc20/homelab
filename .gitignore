@@ -1,3 +1,5 @@
 # Claude Code files - keep local only
 .claude/
 CLAUDE.md
+localAI/.claude/
+localAI/CLAUDE.md
